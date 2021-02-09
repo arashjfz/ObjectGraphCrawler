@@ -1,22 +1,34 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq.Expressions;
-using System.Reflection;
+using System.Runtime.CompilerServices;
+using ObjectGraphCrawler.Configurations;
+using ObjectGraphCrawler.Crawlers;
+using ObjectGraphCrawler.Tokens;
 
 namespace ObjectGraphCrawler
 {
     public class ObjectCrawler
     {
-        private readonly IObjectCrawlerConfiguration _configuration;
-        private IList<IObjectGraphVisitor> _visitors = new List<IObjectGraphVisitor>();
+        public IObjectCrawlerConfiguration Configuration { get; }
+        private readonly IList<IObjectGraphVisitor> _visitors = new List<IObjectGraphVisitor>();
+        private readonly HashSet<object> _crawledItems;
         public ObjectCrawler(IObjectCrawlerConfiguration configuration)
         {
-            _configuration = configuration;
+            _crawledItems = new HashSet<object>(new ReferenceEqualityComparer());
+            Configuration = configuration;
+        }
+
+        public ObjectCrawler()
+        : this(new ObjectCrawlerConfiguration())
+        {
+
         }
 
         public void Crawl(object value)
         {
-            var type = value.GetType();
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+            Crawl(value.GetType(), null, value);
         }
 
         public void AddVisitor(IObjectGraphVisitor visitor)
@@ -24,133 +36,49 @@ namespace ObjectGraphCrawler
             _visitors.Add(visitor);
         }
 
-        private void AcceptVisitors(ICrawlToken token)
+        internal void AcceptVisitors(ICrawlToken token)
         {
             foreach (IObjectGraphVisitor visitor in _visitors)
                 token.Accept(visitor);
         }
 
+        internal void Crawl(Type type, ICrawlToken token, object value)
+        {
+            if (_crawledItems.Contains(value))
+                return;
+            _crawledItems.Add(value);
+            CrawlingType crawlingType = Configuration.CrawlingTypeDetection.DetectType(type, token);
+            ICrawler crawler;
+            switch (crawlingType)
+            {
+                case CrawlingType.Reference:
+                    crawler = new ReferenceCrawler(value, type, token, this);
+                    break;
+                case CrawlingType.Value:
+                    crawler = new ValueCrawler(value, type, token, this);
+                    break;
+                case CrawlingType.Enumerable:
+                    crawler = new EnumerableCrawler(value, type, token, this);
+                    break;
+                case CrawlingType.Dictionary:
+                    crawler = new DictionaryCrawler(value, type, token, this);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            crawler.Crawl();
+        }
     }
-
-
-    public interface IFieldResolvingStrategy
+    internal class ReferenceEqualityComparer : IEqualityComparer<object>
     {
-        IEnumerable<FieldInfo> GetFields(Type type, ICrawlToken crawlToken);
-    }
-    public interface IPropertyResolvingStrategy
-    {
-        IEnumerable<PropertyInfo> GetProperties(Type type, ICrawlToken crawlToken);
-    }
-
-    public interface IObjectCrawlerConfiguration
-    {
-        IFieldResolvingStrategy FieldResolver { get; }
-        IPropertyResolvingStrategy PropertyResolver { get; }
-    }
-
-
-    public interface ICrawlToken
-    {
-        ICrawlToken Parent { get; }
-        object Value { get; }
-        void Accept(IObjectGraphVisitor visitor);
-    }
-    public abstract class CrawlToken : ICrawlToken
-    {
-        protected CrawlToken(ICrawlToken parent)
+        public new bool Equals(object x, object y)
         {
-            Parent = parent;
+            return ReferenceEquals(x, y);
         }
 
-        public ICrawlToken Parent { get; }
-        object ICrawlToken.Value => GetValue();
-        protected abstract object GetValue();
-        public abstract void Accept(IObjectGraphVisitor visitor);
-    }
-    public class ReferenceToken : CrawlToken
-    {
-        private readonly object _value;
-
-        public ReferenceToken(ICrawlToken parent, Type type,object value) : base(parent)
+        public int GetHashCode(object obj)
         {
-            _value = value;
-        }
-
-        protected override object GetValue()
-        {
-            return _value;
-        }
-        public object Value => GetValue();
-
-        public override void Accept(IObjectGraphVisitor visitor)
-        {
-            visitor.VisitReference(this);
+            return RuntimeHelpers.GetHashCode(obj);
         }
     }
-    public class PropertyToken : CrawlToken
-    {
-        private readonly Func<object> _valueResolver;
-        private readonly Action<object> _valueApplier;
-        public PropertyInfo Property { get; }
-
-        public PropertyToken(ICrawlToken parent, PropertyInfo property,Func<object> valueResolver,Action<object> valueApplier) : base(parent)
-        {
-            _valueResolver = valueResolver;
-            _valueApplier = valueApplier;
-            Property = property;
-        }
-
-        protected override object GetValue()
-        {
-            return _valueResolver();
-        }
-
-        public object Value
-        {
-            get => GetValue();
-            set => _valueApplier(value);
-        }
-
-        public override void Accept(IObjectGraphVisitor visitor)
-        {
-            visitor.VisitProperty(this);
-        }
-    }
-    public class FieldToken : CrawlToken
-    {
-        private readonly Func<object> _valueResolver;
-        private readonly Action<object> _valueApplier;
-        public FieldInfo Field { get; }
-
-        public FieldToken(ICrawlToken parent, FieldInfo field, Func<object> valueResolver, Action<object> valueApplier) : base(parent)
-        {
-            _valueResolver = valueResolver;
-            _valueApplier = valueApplier;
-            Field = field;
-        }
-
-        protected override object GetValue()
-        {
-            return _valueResolver();
-        }
-        public object Value
-        {
-            get => GetValue();
-            set => _valueApplier(value);
-        }
-
-        public override void Accept(IObjectGraphVisitor visitor)
-        {
-            visitor.VisitField(this);
-        }
-    }
-
-
-    public interface IObjectGraphVisitor
-    {
-        void VisitProperty(PropertyToken property);
-        void VisitField(FieldToken field);
-        void VisitReference(ReferenceToken reference);
-    }
-
 }
