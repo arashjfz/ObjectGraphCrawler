@@ -5,14 +5,17 @@ Object graph crawler is as simple library that can be used to crawl a graph of o
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/arashjfz/ObjectGraphCrawler/.NET)
 
 How to Use
+<br />
 The entry point for crawling is ***ObjectCrawler*** class 
-
-    ObjectCrawler crawler = new ObjectCrawler();
+```csharp
+ObjectCrawler crawler = new ObjectCrawler();
+```
 Then simply add A visitor. Visitors can be inherited from ***ObjectGraphVisitor*** class. then by overriding each visiting methods it is possible to inspect crawling tokens
-
-    crawler.AddVisitor(visitor);
-
+```csharp
+crawler.AddVisitor(visitor);
+```
 Finally use ***crawl*** method of ***crawler*** to start crawling
 
-    crawler.Crawl(someObjectToCrawl);
-
+```csharp
+crawler.Crawl(someObjectToCrawl);
+```
