@@ -1,7 +1,10 @@
+<h1>ObjectGraphCrawler</h1>
+<br />
 Object graph crawler is as simple library that can be used to crawl a graph of object and intersept it using the visitor pattern
 
 
 **Build status:**
+<br />
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/arashjfz/ObjectGraphCrawler/.NET)
 
 How to Use
